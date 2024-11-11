@@ -1,0 +1,68 @@
+# Install required packages 
+packages <- c("spgwr", "sf", "dplyr", "ggplot2", "tmap")
+new_packages <- packages[!(packages %in% installed.packages()[,"Package"])]
+if(length(new_packages)) install.packages(new_packages)
+
+# Load required libraries
+library(spgwr)
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(tmap)
+
+
+# load the data
+path <- "D:\\Education\\Water journal-2\\Atmosphere\\first revision" 
+setwd(path)
+data <- read.csv("CP.csv")
+
+
+# Display the first few rows to ensure the data is read correctly
+head(data)
+
+# Filter out rows with missing values in key columns (Moi and D)
+data <- data %>% filter(!is.na(Moi) & !is.na(D))
+
+# Convert the data to an 'sf' object (spatial data frame)
+stations_sf <- st_as_sf(data, coords = c("Lon", "Lat"), crs = 4326)
+
+# Response variable: D
+y <- data$D
+
+# Predictor variable: Moi
+x <- data$Moi
+
+# Convert 'sf' to 'Spatial' object for GWR analysis
+stations_sp <- as(stations_sf, "Spatial")
+
+# Calculate optimal bandwidth using cross-validation
+gwr_bandwidth <- gwr.sel(y ~ x, data = stations_sp, coords = cbind(data$Lon, data$Lat))
+
+# Print the optimal bandwidth
+print(gwr_bandwidth)
+
+# Fit the GWR model using the selected bandwidth
+gwr_model <- gwr(y ~ x, data = stations_sp, coords = cbind(data$Lon, data$Lat), bandwidth = gwr_bandwidth)
+
+# Display the GWR model summary
+summary(gwr_model)
+
+# Extract local R² values to measure model fit at each station
+stations_sf$local_r2 <- gwr_model$SDF$localR2
+
+# Display the first few rows to check local R² values
+head(stations_sf)
+
+# Plot the local R² values using ggplot2
+ggplot(data = stations_sf) +
+  geom_sf(aes(color = local_r2), size = 5) +
+  scale_color_gradient(low = "blue", high = "red") +
+  labs(title = "Local R² Values from GWR for Moi vs D",
+       color = "R²") +
+  theme_minimal()
+
+# Alternatively, create an interactive map using tmap
+tmap_mode("view")
+tm_shape(stations_sf) +
+  tm_dots(col = "local_r2", palette = "RdYlBu", size = 0.5) +
+  tm_layout(title = "GWR R² Values Across Iran")
